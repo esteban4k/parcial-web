@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parcial 1 - Películas</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 16px; background: #f4f4f5; color: #18181b; }
+    h1 { margin: 0 0 4px; }
+    section { background: #fff; border: 1px solid #e4e4e7; border-radius: 8px; padding: 12px 16px; margin-top: 16px; }
+    h2 { font-size: 1.1rem; margin: 0 0 8px; }
+    form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+    input, select, button { font: inherit; padding: 6px 8px; border: 1px solid #d4d4d8; border-radius: 4px; }
+    input { width: 150px; }
+    button { background: #2563eb; color: #fff; border-color: #2563eb; cursor: pointer; }
+    button.secundario { background: #fff; color: #18181b; border-color: #d4d4d8; }
+    .fila { display: flex; flex-wrap: wrap; gap: 16px; }
+    .fila > div { flex: 1 1 280px; }
+    #sesion { font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 6px; border-bottom: 1px solid #e4e4e7; }
+    .tabla { overflow-x: auto; }
+    pre { background: #18181b; color: #e4e4e7; padding: 10px; border-radius: 6px; overflow-x: auto; margin: 0; white-space: pre-wrap; }
+    .estado { display: inline-block; padding: 2px 8px; border-radius: 4px; color: #fff; font-weight: 600; }
+    .ok { background: #16a34a; }
+    .error { background: #dc2626; }
+    .nota { color: #71717a; font-size: 0.9rem; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>🎬 Parcial 1 - Tienda de películas</h1>
+  <p class="nota">Front básico para probar la API. Cada acción muestra abajo la respuesta real del servidor.</p>
+
+  <section>
+    <h2>1. Usuarios</h2>
+    <p>Sesión actual: <span id="sesion">sin iniciar sesión</span>
+      <button type="button" class="secundario" id="btnSalir">Cerrar sesión</button></p>
+    <div class="fila">
+      <div>
+        <h3>Registro</h3>
+        <form id="formRegistro">
+          <input name="username" placeholder="username" required>
+          <input name="password" type="password" placeholder="password (mín. 6)" required>
+          <select name="rol">
+            <option value="basico">básico</option>
+            <option value="administrador">administrador</option>
+          </select>
+          <button>Registrar</button>
+        </form>
+      </div>
+      <div>
+        <h3>Login</h3>
+        <form id="formLogin">
+          <input name="username" placeholder="username" required>
+          <input name="password" type="password" placeholder="password" required>
+          <button>Entrar</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Crear película</h2>
+    <p class="nota">Solo el administrador. Pruébalo con un usuario básico para ver el error 403.</p>
+    <form id="formPelicula">
+      <input name="titulo" placeholder="Título" required>
+      <input name="director" placeholder="Director" required>
+      <input name="anioLanzamiento" type="number" placeholder="Año" required>
+      <input name="productora" placeholder="Productora" required>
+      <input name="precio" type="number" min="0" step="any" placeholder="Precio" required>
+      <button>Crear</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>3 y 4. Consultar películas</h2>
+    <p class="nota">Requiere iniciar sesión. Cierra sesión y consulta para ver el error 401.</p>
+    <form id="formTodas">
+      <button>Ver todas</button>
+    </form>
+    <form id="formFiltro">
+      Año mayor a <input name="anio" type="number" placeholder="2000" required>
+      y precio menor o igual a <input name="precio" type="number" step="any" placeholder="50000" required>
+      <button>Filtrar</button>
+    </form>
+    <div class="tabla">
+      <table>
+        <thead><tr><th>ID</th><th>Título</th><th>Director</th><th>Año</th><th>Productora</th><th>Precio</th></tr></thead>
+        <tbody id="tablaPeliculas"><tr><td colspan="6" class="nota">Sin datos</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Respuesta de la API</h2>
+    <p id="peticion" class="nota">Aún no se ha enviado ninguna petición.</p>
+    <pre id="respuesta">—</pre>
+  </section>
+
+  <script>
+    let token = localStorage.getItem('token');
+    let usuario = JSON.parse(localStorage.getItem('usuario') || 'null');
+
+    const $ = (id) => document.getElementById(id);
+    const datosDe = (form) => Object.fromEntries(new FormData(form));
+
+    function pintarSesion() {
+      $('sesion').textContent = usuario ? `${usuario.username} (${usuario.rol})` : 'sin iniciar sesión';
+    }
+
+    async function api(metodo, ruta, body) {
+      const headers = {};
+      if (body) headers['Content-Type'] = 'application/json';
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const res = await fetch('/api' + ruta, { method: metodo, headers, body: body && JSON.stringify(body) });
+      const data = await res.json().catch(() => null);
+
+      $('peticion').innerHTML = `<span class="estado ${res.ok ? 'ok' : 'error'}">${res.status}</span> ${metodo} /api${ruta}`;
+      $('respuesta').textContent = JSON.stringify(data, null, 2);
+      return { ok: res.ok, data };
+    }
+
+    function pintarPeliculas(peliculas) {
+      const tbody = $('tablaPeliculas');
+      tbody.replaceChildren();
+      if (!peliculas.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="nota">No hay películas que coincidan</td></tr>';
+        return;
+      }
+      for (const p of peliculas) {
+        const tr = document.createElement('tr');
+        for (const valor of [p.id, p.titulo, p.director, p.anioLanzamiento, p.productora, '$' + p.precio.toLocaleString('es-CO')]) {
+          const td = document.createElement('td');
+          td.textContent = valor;
+          tr.append(td);
+        }
+        tbody.append(tr);
+      }
+    }
+
+    $('formRegistro').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { ok } = await api('POST', '/auth/registro', datosDe(e.target));
+      if (ok) e.target.reset();
+    });
+
+    $('formLogin').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { ok, data } = await api('POST', '/auth/login', datosDe(e.target));
+      if (ok) {
+        token = data.token;
+        usuario = data.usuario;
+        localStorage.setItem('token', token);
+        localStorage.setItem('usuario', JSON.stringify(usuario));
+        pintarSesion();
+        e.target.reset();
+      }
+    });
+
+    $('btnSalir').addEventListener('click', () => {
+      token = null;
+      usuario = null;
+      localStorage.removeItem('token');
+      localStorage.removeItem('usuario');
+      pintarSesion();
+      pintarPeliculas([]);
+    });
+
+    $('formPelicula').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const datos = datosDe(e.target);
+      datos.anioLanzamiento = Number(datos.anioLanzamiento);
+      datos.precio = Number(datos.precio);
+      const { ok } = await api('POST', '/peliculas', datos);
+      if (ok) e.target.reset();
+    });
+
+    $('formTodas').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { ok, data } = await api('GET', '/peliculas');
+      pintarPeliculas(ok ? data : []);
+    });
+
+    $('formFiltro').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const params = new URLSearchParams(datosDe(e.target));
+      const { ok, data } = await api('GET', '/peliculas/filtro?' + params);
+      pintarPeliculas(ok ? data : []);
+    });
+
+    pintarSesion();
+  </script>
+</body>
+</html>
